@@ -42,6 +42,7 @@ twice raises a duplicate key or a duplicate object error.
 | `013_seed_prompts.sql` | 25 prompts, 16 measurement definitions |
 | `014_activation_gate.sql` | the seven activation checks, enforced as a trigger |
 | `015_migration_log.sql` | the applied-migration log, with 001 to 014 backfilled |
+| `016_read_all_write_members.sql` | read for every Blend user, write for assigned members |
 
 Then the four verification suites, which only define functions and can be
 re-run at any time:
@@ -69,7 +70,7 @@ Expected shape after a clean run:
 | Tables / columns | 48 / 526 |
 | Check constraints / foreign keys / uniques | 30 / 106 / 32 |
 | Triggers in `public` / enum types | 27 / 36 |
-| Policies | 30 |
+| Policies | 74 |
 
 `gea_verify()` and `gea_verify_014()` write and roll back throwaway fixtures.
 They are safe to run against a populated database and leave nothing behind.
@@ -124,21 +125,53 @@ workbook change rather than editing the SQL:
 - `build_seed.py` reads the six reference workbooks plus the question map and
   writes `008` to `013`.
 
-Both need `openpyxl` and `python-docx`. Source workbooks live in the Assessment
-Playbook folder.
+Both need `openpyxl` and `python-docx`, which are in `requirements.txt`. Source
+workbooks live in the Assessment Playbook folder.
 
-## Known drift
+## Access control
 
-The live database carries **46 policies against this repository's 30**. Sixteen
-`*_read_authenticated` policies were added outside the migration set in response
-to a Supabase security linter warning. Everything else — tables, columns,
-constraints, triggers, enums and every reference row count — matches exactly.
+    read   any active Blend user, on every engagement
+    write  the consultants assigned to that engagement
+    raw    members with can_view_raw_data
 
-Most of the sixteen are harmless and arguably an improvement: they grant read
-access to Zone A reference data, which every consultant should see. One is not.
-`client_read_authenticated` lets any authenticated user read every client company
-name regardless of engagement membership, which contradicts the rule in `006`
-that a user with no membership sees nothing.
+Blend is a small team and a consultant learning from a finished assessment is
+the point of keeping a library of them, so reading is open across engagements.
+`engagement_member` decides who can change a project, not who can see one.
 
-Until that is resolved as a `015` migration, this repository does not reproduce
-the live access control layer. Nothing else is outstanding.
+**Raw client exports are the exception.** `artefact`, `dataset` and
+`dataset_field_profile` hold the client's own CRM extract — deal records,
+contact names, email addresses. Blend processes that under the contract with
+that client for that assessment, which is not a basis for showing it to every
+consultant on the platform. A migration that adds a read-all policy to one of
+those three is undoing a decision, not extending one.
+
+"Any Blend user" means an active row in `app_user`, not anyone holding a token.
+Deactivating someone who has left revokes their reads even while their SSO
+identity still resolves.
+
+### Testing it
+
+```
+pip install -r requirements.txt
+python3 rls_test.py     # 25 checks
+```
+
+`harness.py` stands up a throwaway PostgreSQL 16 under `.pgdata/`, applies every
+migration in order and hands back a connection. `rls_test.py` uses it; so does
+anything else that needs a disposable database. Paths resolve relative to the
+repository, so it runs from wherever this is checked out. Set `GEA_PGDATA` to
+put the scratch database somewhere else.
+
+`.pgdata/` is scratch and belongs in `.gitignore`.
+
+This connects as a Postgres role that is a member of `authenticated`, which is
+the role Supabase puts a signed-in user into. An earlier version of the file
+connected as an unrelated role, so every policy written `to authenticated` was
+silently skipped: the suite reported 15/15 while a user on no engagement could
+read every client record. **If that grant is ever removed these tests go green
+while testing nothing.**
+
+The write checks count rows actually changed rather than watching for an
+exception, because a policy that hides a row also makes an `UPDATE` against it
+match nothing — the statement then succeeds having done nothing, and testing for
+an error reports success on a write that was in fact prevented.
