@@ -41,6 +41,7 @@ twice raises a duplicate key or a duplicate object error.
 | `012_seed_requirements.sql` | 171 evidence requirements |
 | `013_seed_prompts.sql` | 25 prompts, 16 measurement definitions |
 | `014_activation_gate.sql` | the seven activation checks, enforced as a trigger |
+| `015_migration_log.sql` | the applied-migration log, with 001 to 014 backfilled |
 
 Then the four verification suites, which only define functions and can be
 re-run at any time:
@@ -65,10 +66,10 @@ Expected shape after a clean run:
 
 | | |
 |---|---|
-| Tables / columns | 47 / 523 |
+| Tables / columns | 48 / 526 |
 | Check constraints / foreign keys / uniques | 30 / 106 / 32 |
 | Triggers in `public` / enum types | 27 / 36 |
-| Policies | 29 |
+| Policies | 30 |
 
 `gea_verify()` and `gea_verify_014()` write and roll back throwaway fixtures.
 They are safe to run against a populated database and leave nothing behind.
@@ -98,6 +99,20 @@ select * from gea_activate_instrument('v0.6');
 The wrapper is a convenience. The gate itself is a trigger on
 `instrument_version`, so writing the `UPDATE` by hand hits it too.
 
+## What has been applied
+
+```sql
+select filename, applied_at::date, note from gea_migration order by filename;
+```
+
+`supabase_migrations.schema_migrations` is Supabase's own table and pairs with
+files in the Lovable repository's `supabase/migrations/` folder. It holds only
+001 to 006 and will not be added to, because these migrations deliberately do
+not live there. `gea_migration` is the record for this repository.
+
+**Every migration ends with its own insert into `gea_migration`.** One that does
+not log itself is incomplete.
+
 ## Regenerating the seed
 
 `008` to `013` are generated, not hand-written. Re-run the generators after any
@@ -114,7 +129,7 @@ Playbook folder.
 
 ## Known drift
 
-The live database carries **45 policies against this repository's 29**. Sixteen
+The live database carries **46 policies against this repository's 30**. Sixteen
 `*_read_authenticated` policies were added outside the migration set in response
 to a Supabase security linter warning. Everything else — tables, columns,
 constraints, triggers, enums and every reference row count — matches exactly.
