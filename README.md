@@ -43,6 +43,8 @@ twice raises a duplicate key or a duplicate object error.
 | `014_activation_gate.sql` | the seven activation checks, enforced as a trigger |
 | `015_migration_log.sql` | the applied-migration log, with 001 to 014 backfilled |
 | `016_read_all_write_members.sql` | read for every Blend user, write for assigned members |
+| `017_auth_bridge.sql` | Entra identities become Blend users on first sign-in |
+| `018_run_enqueue.sql` | idempotent enqueue, realtime, stall detection |
 
 Then the four verification suites, which only define functions and can be
 re-run at any time:
@@ -67,10 +69,10 @@ Expected shape after a clean run:
 
 | | |
 |---|---|
-| Tables / columns | 48 / 526 |
+| Tables / columns | 48 / 528 |
 | Check constraints / foreign keys / uniques | 30 / 106 / 32 |
-| Triggers in `public` / enum types | 27 / 36 |
-| Policies | 74 |
+| Triggers in `public` / enum types | 28 / 36 |
+| Policies | 75 |
 
 `gea_verify()` and `gea_verify_014()` write and roll back throwaway fixtures.
 They are safe to run against a populated database and leave nothing behind.
@@ -114,6 +116,39 @@ not live there. `gea_migration` is the record for this repository.
 **Every migration ends with its own insert into `gea_migration`.** One that does
 not log itself is incomplete.
 
+## Handing work to the analysis service
+
+The application and the Python analysis service share this database and talk
+only through `analysis_run`. There is no HTTP between them.
+
+```sql
+select * from gea_enqueue_run(
+  p_engagement => '...', p_job_type => 'parse',
+  p_artefact_ids => array['...']::uuid[], p_hashes => array['sha256...']);
+```
+
+It returns the run whether it created one or found an identical one already
+queued, so two people clicking the same button produce one run. Callers never
+compute the idempotency key: it is a generated column, so it cannot be computed
+two slightly different ways by two screens.
+
+The key covers the engagement, the job type, the prompt version, the input
+hashes sorted, and the parameters. **The contract document omits the job type
+and the engagement.** Following it literally, `parse` and `profile` on the same
+uploaded file — both with no prompt and no parameters — produce the same key,
+and the second job is refused as a duplicate of the first. Those two run back to
+back on every upload.
+
+`analysis_run` is in the `supabase_realtime` publication, so a browser
+subscription receives status and progress. Without that the subscription
+connects successfully and receives nothing, which is worth knowing because it
+looks like working code.
+
+Read `analysis_run_state` rather than the table where a screen shows progress:
+it adds `is_stalled` (running, but no heartbeat for ten minutes) and
+`progress_percent`. The threshold is defined once there rather than invented per
+screen.
+
 ## Regenerating the seed
 
 `008` to `013` are generated, not hand-written. Re-run the generators after any
@@ -148,6 +183,30 @@ those three is undoing a decision, not extending one.
 "Any Blend user" means an active row in `app_user`, not anyone holding a token.
 Deactivating someone who has left revokes their reads even while their SSO
 identity still resolves.
+
+### Signing in
+
+Authentication is Entra ID through Supabase Auth. There are no local accounts
+and no password column anywhere.
+
+A person cannot be provisioned before they first sign in, because
+`app_user.auth_subject` is not null and nothing knows their Supabase identity
+until it exists. So a trigger on `auth.users` creates the `app_user` row on
+first sign-in, taking the display name from the Entra claim and falling back to
+the local part of the address.
+
+- The address must end `@blendb2b.com`. The Entra tenant already restricts who
+  can authenticate; this makes a misconfigured provider fail loudly instead of
+  quietly admitting someone.
+- **The first person to sign in becomes an admin.** Everyone after is a Growth
+  Consultant until an admin says otherwise. Without that bootstrap nobody can
+  promote anybody and there is no way into the application.
+- An identity rebuilt in Entra re-points the existing row by email rather than
+  failing on the unique constraint, so nobody loses their history.
+- The last active admin cannot be demoted or deactivated.
+
+Admins maintain the directory. Deactivating someone revokes every read
+immediately, because `app_is_blend_user()` requires an active row.
 
 ### Testing it
 
