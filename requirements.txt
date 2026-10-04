@@ -1,7 +1,2 @@
-# For the Python test harness only. The migrations need no Python at all.
-pgserver
+# Applying migrations and running the verification suites.
 psycopg[binary]
-
-# For the seed generators (build_seed.py, build_question_map.py).
-openpyxl
-python-docx

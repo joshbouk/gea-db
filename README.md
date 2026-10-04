@@ -22,8 +22,39 @@ require it, the change is wrong. Read every migration before running it.
 
 ## Applying from empty
 
-Run in filename order, each once. Migrations are not idempotent; running one
-twice raises a duplicate key or a duplicate object error.
+```
+pip install -r requirements.txt
+python apply.py
+```
+
+`requirements.txt` holds only what applying and verifying needs, so it installs
+anywhere. `requirements-dev.txt` adds the local test harness and the seed
+generators; its `pgserver` dependency publishes no Windows wheel, so on Windows
+run the access tests under WSL or against a scratch Supabase project.
+
+It applies whatever is pending, installs the four verification suites and runs
+them. Expect **77/77**, 48 tables, 30 checks, 28 triggers, 75 policies, and
+instrument v0.6 in draft with 48 elements and 288 anchors.
+
+Running it twice is safe: it reads `gea_migration` to decide what is pending.
+`--dry-run` lists what it would do; `--verify-only` checks a database without
+touching it.
+
+Each migration runs in its own transaction, so a failure rolls that one back
+and stops. Never edit a migration that has already been applied somewhere —
+write the next one.
+
+Needs `DATABASE_URL`. Get it from the **Connect** button at the top of the
+Supabase project page. Take **Direct connection** where it works; on an
+IPv4-only network that hostname will not resolve at all, and **Session pooler**
+is the one to use — same port, different host, and it holds a real session so
+transactions and `set local` behave normally.
+
+### By hand
+
+Where a SQL editor is all you have, run these in filename order, each once.
+Migrations are not idempotent; running one twice raises a duplicate key or
+duplicate object error.
 
 | File | What it does |
 |---|---|
@@ -45,6 +76,7 @@ twice raises a duplicate key or a duplicate object error.
 | `016_read_all_write_members.sql` | read for every Blend user, write for assigned members |
 | `017_auth_bridge.sql` | Entra identities become Blend users on first sign-in |
 | `018_run_enqueue.sql` | idempotent enqueue, realtime, stall detection |
+| `019_run_claim.sql` | workers claim queued runs without colliding |
 
 Then the four verification suites, which only define functions and can be
 re-run at any time:
@@ -211,7 +243,7 @@ immediately, because `app_is_blend_user()` requires an active row.
 ### Testing it
 
 ```
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 python3 rls_test.py     # 25 checks
 ```
 

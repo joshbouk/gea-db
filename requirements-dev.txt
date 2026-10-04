@@ -1,0 +1,10 @@
+-r requirements.txt
+
+# Local test harness. Stands up a throwaway PostgreSQL so rls_test.py can run
+# against a scratch database. No Windows wheel is published, so on Windows run
+# the access tests under WSL or against a scratch Supabase project instead.
+pgserver
+
+# Regenerating the seed migrations from the reference workbooks.
+openpyxl
+python-docx

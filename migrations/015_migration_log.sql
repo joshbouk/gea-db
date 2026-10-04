@@ -47,24 +47,16 @@ end $$;
 create policy gea_migration_read on gea_migration
   for select to authenticated using (true);
 
--- Backfill. Dates are established from supabase_migrations.schema_migrations
--- for 001 to 006 and from the created_at of the rows each migration wrote for
--- 007 to 014. They are accurate to the day, not the minute.
-insert into gea_migration (filename, applied_at, note) values
-  ('001_foundation.sql',        '2026-09-16', 'Backfilled. Applied through the Lovable agent.'),
-  ('002_zone_a_reference.sql',  '2026-09-16', 'Backfilled. Applied through the Lovable agent.'),
-  ('003_zone_b_c.sql',          '2026-09-16', 'Backfilled. Applied through the Lovable agent.'),
-  ('004_zone_d_e.sql',          '2026-09-16', 'Backfilled. Applied through the Lovable agent.'),
-  ('005_triggers.sql',          '2026-09-16', 'Backfilled. Applied through the Lovable agent.'),
-  ('006_rls.sql',               '2026-09-16', 'Backfilled. Applied through the Lovable agent.'),
-  ('007_zone_a_additions.sql',  '2026-09-23', 'Backfilled. Applied through the SQL editor.'),
-  ('008_seed_instrument.sql',   '2026-09-23', 'Backfilled. Applied through the SQL editor.'),
-  ('009_seed_fields.sql',       '2026-09-23', 'Backfilled. Applied through the SQL editor.'),
-  ('010_seed_exports.sql',      '2026-09-23', 'Backfilled. Applied through the SQL editor.'),
-  ('011_seed_interviews.sql',   '2026-09-23', 'Backfilled. Applied through the SQL editor.'),
-  ('012_seed_requirements.sql', '2026-09-23', 'Backfilled. Applied through the SQL editor.'),
-  ('013_seed_prompts.sql',      '2026-09-23', 'Backfilled. Applied through the SQL editor.'),
-  ('014_activation_gate.sql',   '2026-09-23', 'Backfilled. Applied through the SQL editor.');
+-- Backfill. These ran before the log existed, so the only honest timestamp is
+-- the moment it was created. Do not invent dates for them.
+insert into gea_migration (filename, note)
+select f, 'Applied before this log existed; recorded when the log was created.'
+  from unnest(array[
+    '001_foundation.sql', '002_zone_a_reference.sql', '003_zone_b_c.sql',
+    '004_zone_d_e.sql', '005_triggers.sql', '006_rls.sql',
+    '007_zone_a_additions.sql', '008_seed_instrument.sql', '009_seed_fields.sql',
+    '010_seed_exports.sql', '011_seed_interviews.sql', '012_seed_requirements.sql',
+    '013_seed_prompts.sql', '014_activation_gate.sql']) as f;
 
 insert into gea_migration (filename, note) values
   ('015_migration_log.sql', 'Created the log and backfilled 001 to 014.');
