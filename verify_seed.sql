@@ -214,11 +214,13 @@ begin
   result := case when n = 0 then 'pass' else 'FAIL — ' || n || ' without' end;
   return next;
 
-  -- the version is still editable ----------------------------------------
+  -- the version is activated, and therefore frozen ------------------------
+  -- Before activation this asserted the opposite. An instrument that stays in
+  -- draft cannot be pinned by an engagement, so active is the finished state.
   select status::text into txt from instrument_version where id = iv;
-  rule := 'S31'; description := 'the version is still draft and can be corrected';
-  result := case when txt = 'draft' then 'pass'
-                 else 'FAIL — already ' || txt end; return next;
+  rule := 'S31'; description := 'the version is active, so its reference data is frozen';
+  result := case when txt = 'active' then 'pass'
+                 else 'FAIL — still ' || txt end; return next;
 
   return;
 end $fn$;

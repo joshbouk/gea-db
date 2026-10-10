@@ -206,18 +206,22 @@ begin
   result := case when ok then 'pass' else 'FAIL — the link was allowed' end;
   return next;
 
-  -- V08 a prompt cannot activate without its contract
+  -- V08 an active prompt cannot lose its contract.
+  -- This originally tested the transition into active, which stopped testing
+  -- anything once the prompts were activated: the gate only fired when the
+  -- status changed. Emptying the contract of a prompt that is already active
+  -- is the same failure and is now refused.
   ok := false;
   begin
-    update prompt_version set discard_conditions = '[]'::jsonb where ref = 'GEA-P01';
     update prompt_version set status = 'active' where ref = 'GEA-P01';
+    update prompt_version set discard_conditions = '[]'::jsonb where ref = 'GEA-P01';
     raise exception 'GEA_NOT_ENFORCED';
   exception when others then
     ok := sqlerrm <> 'GEA_NOT_ENFORCED';
   end;
   rule := 'V08';
-  description := 'a prompt with no discard condition cannot be activated';
-  result := case when ok then 'pass' else 'FAIL — activation was allowed' end;
+  description := 'an active prompt cannot have its discard conditions removed';
+  result := case when ok then 'pass' else 'FAIL — the change was allowed' end;
   return next;
 
   -- V09 the positive case: a clean draft activates and becomes immutable
