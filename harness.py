@@ -70,12 +70,12 @@ def seed(conn):
         insert into client (id,company_name) values
           ('55555555-5555-5555-5555-555555555555','Fixture Co');
 
-        insert into engagement (id,client_id,instrument_version_id,name,motion_in_scope,
+        insert into engagement (id,client_id,instrument_version_id,name,
                                 window_start,window_end,storage_prefix)
         values ('66666666-6666-6666-6666-666666666666',
                 '55555555-5555-5555-5555-555555555555',
                 '11111111-1111-1111-1111-111111111111',
-                'Fixture GEA','New business','2024-01-01','2025-12-31','eng/fixture');
+                'Fixture GEA','2024-01-01','2025-12-31','eng/fixture');
 
         insert into engagement_member (engagement_id,app_user_id,engagement_role) values
           ('66666666-6666-6666-6666-666666666666','33333333-3333-3333-3333-333333333331','lead_architect'),
