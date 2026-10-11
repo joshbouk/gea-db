@@ -31,12 +31,14 @@ import psycopg
 
 ROOT = pathlib.Path(__file__).resolve().parent
 MIGRATIONS = sorted((ROOT / "migrations").glob("*.sql"))
-VERIFIERS = ["verify.sql", "verify_007.sql", "verify_seed.sql", "verify_014.sql"]
+VERIFIERS = ["verify.sql", "verify_007.sql", "verify_seed.sql", "verify_014.sql",
+             "verify_derived.sql"]
 SUITES = [
     ("gea_verify", 28, "the database refuses bad data"),
     ("gea_verify_007", 6, "reference immutability and the cap model"),
     ("gea_verify_seed", 31, "the loaded data matches the instrument"),
     ("gea_verify_014", 12, "each activation check refuses its violation"),
+    ("gea_verify_derived", 8, "no judgement outlives the evidence it was about"),
 ]
 
 

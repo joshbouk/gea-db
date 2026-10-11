@@ -32,9 +32,27 @@ anywhere. `requirements-dev.txt` adds the local test harness and the seed
 generators; its `pgserver` dependency publishes no Windows wheel, so on Windows
 run the access tests under WSL or against a scratch Supabase project.
 
-It applies whatever is pending, installs the four verification suites and runs
-them. Expect **77/77**, 48 tables, 30 checks, 28 triggers, 75 policies, and
-instrument v0.6 in draft with 48 elements and 288 anchors.
+It applies whatever is pending, installs the five verification suites and runs
+them. Expect **85/85** and instrument v0.6 active with 48 elements and 288
+anchors.
+
+## No judgement outlives the evidence it was about
+
+`verify_derived.sql` exists because the same bug was built three times. A field
+mapping outlived the file its column was chosen from. A decision that a field
+was absent outlived the file it was absent from. A score cap outlived the
+absence that caused it. Each was invisible until somebody did the obvious thing
+in the application and got a wrong answer that looked right.
+
+Whenever one record is a judgement about another — a mapping about a file, a
+cap about a mapping, a score about a run, a finding about a score — removing or
+superseding the second has to reopen the first. Nothing enforces that in
+general, because it is a property of each pair.
+
+**So each pair gets a rule in `verify_derived.sql`.** When you add a piece of
+derived state, add its rule there in the same change. The suite builds a
+fixture, removes the evidence, and checks the judgement reopened — and it has
+been checked against the real bug, so it fails when the behaviour regresses.
 
 Running it twice is safe: it reads `gea_migration` to decide what is pending.
 `--dry-run` lists what it would do; `--verify-only` checks a database without
