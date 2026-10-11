@@ -142,7 +142,13 @@ def main():
     reads("outsider reads its scores",        "select id from score",        OUTSIDE, 1)
     reads("outsider reads its metrics",       "select id from metric",       OUTSIDE, 0)
     reads("outsider reads clients",           "select id from client",       OUTSIDE, 1)
-    reads("outsider reads the instrument",    "select id from element",      OUTSIDE, 52)
+    # Scoped to the active version. Counting every element across every
+    # instrument version makes this break on the next methodology change
+    # while telling nobody anything about access.
+    reads("outsider reads the instrument",
+          "select e.id from element e join instrument_version iv "
+          "on iv.id = e.instrument_version_id where iv.status = 'active'",
+          OUTSIDE, 48)
     reads("outsider DENIED artefacts",        "select id from artefact",     OUTSIDE, 0)
     reads("outsider DENIED datasets",         "select id from dataset",      OUTSIDE, 0)
     writes("outsider cannot write a task",

@@ -7,7 +7,10 @@
 -- Run:  select * from gea_verify_seed();
 -- Every row must read 'pass'.
 
-create or replace function gea_verify_seed(p_label text default 'v0.6')
+-- Null means whichever version is active, rather than a fixed label: a
+-- methodology change must not silently leave the suite checking a retired
+-- version.
+create or replace function gea_verify_seed(p_label text default null)
 returns table (rule text, description text, result text)
 language plpgsql as $fn$
 declare
@@ -15,6 +18,9 @@ declare
   n bigint;
   txt text;
 begin
+  p_label := coalesce(p_label,
+    (select label from instrument_version where status = 'active' limit 1));
+
   select id into iv from instrument_version where label = p_label;
   if iv is null then
     rule := 'S00'; description := 'The instrument version exists';
@@ -119,10 +125,43 @@ begin
   result := case when n = 0 then 'pass' else 'FAIL — ' || n || ' undeclared' end;
   return next;
 
-  select count(*) into n from analysis_field_requirement
-   where instrument_version_id = iv and analysis_key = 'discovery_consistency_classification';
-  rule := 'S16'; description := 'discovery_consistency_classification declares 13 fields';
-  result := case when n = 13 then 'pass' else 'FAIL — ' || n end; return next;
+  -- This replaced a spot check on one analysis's field count, which was a
+  -- magic number that broke the first time the methodology changed and told
+  -- nobody anything when it passed.
+  --
+  -- What matters is the property v0.6 got wrong: every analysis reads several
+  -- exports, and must require an identifier from each one, or it cannot put
+  -- them together. v0.6 reported thirteen analyses supported that could not
+  -- have run.
+  select count(*) into n from (
+    select r.analysis_key, want.ref
+      from analysis_field_requirement r
+      join canonical_field cf on cf.id = r.canonical_field_id
+      cross join lateral unnest(cf.source_export_refs) as want(ref)
+     where r.instrument_version_id = iv
+     group by r.analysis_key, want.ref
+    except
+    select r.analysis_key, want.ref
+      from analysis_field_requirement r
+      join canonical_field cf on cf.id = r.canonical_field_id
+      cross join lateral unnest(cf.source_export_refs) as want(ref)
+     where r.instrument_version_id = iv and cf.expected_type = 'id'
+     group by r.analysis_key, want.ref
+  ) missing
+  -- Some exports carry no identifier at all, because their rows are not
+  -- things: marketing spend is an amount per channel per month, and a
+  -- forecast is an amount per period. Those join on their dimensions, and
+  -- demanding a row identifier of them would be asking for something that
+  -- does not exist.
+  where exists (select 1 from canonical_field cf
+                 where cf.instrument_version_id = iv
+                   and cf.expected_type = 'id'
+                   and missing.ref = any (cf.source_export_refs));
+  rule := 'S16';
+  description := 'every analysis can identify the rows of every export it reads';
+  result := case when n = 0 then 'pass'
+                 else 'FAIL — ' || n || ' analysis-and-export pairs with no identifier' end;
+  return next;
 
   -- exports and coverage --------------------------------------------------
   select count(*) into n from export_line where instrument_version_id = iv;

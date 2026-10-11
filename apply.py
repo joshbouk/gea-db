@@ -119,13 +119,21 @@ def shape(conn) -> None:
                join pg_namespace n on n.oid=c.relnamespace
               where not t.tgisinternal and n.nspname='public'),
             (select count(*) from pg_policies where schemaname='public'),
-            (select count(*) from element),
-            (select count(*) from anchor),
-            (select label || ' (' || status || ')' from instrument_version)
+            (select count(*) from element e
+               join instrument_version iv on iv.id = e.instrument_version_id
+              where iv.status = 'active'),
+            (select count(*) from anchor a
+               join element e on e.id = a.element_id
+               join instrument_version iv on iv.id = e.instrument_version_id
+              where iv.status = 'active'),
+            (select string_agg(label || ' (' || status || ')', ', '
+                               order by label)
+               from instrument_version)
         """)
         t, c, g, p, e, a, iv = cur.fetchone()
     print(f"\n  {t} tables, {c} checks, {g} triggers, {p} policies")
-    print(f"  instrument {iv}: {e} elements, {a} anchors")
+    print(f"  instruments: {iv}")
+    print(f"  the active one has {e} elements and {a} anchors")
 
 
 def main() -> int:
