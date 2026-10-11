@@ -38,7 +38,7 @@ SUITES = [
     ("gea_verify_007", 6, "reference immutability and the cap model"),
     ("gea_verify_seed", 31, "the loaded data matches the instrument"),
     ("gea_verify_014", 12, "each activation check refuses its violation"),
-    ("gea_verify_derived", 8, "no judgement outlives the evidence it was about"),
+    ("gea_verify_derived", 9, "no judgement outlives the evidence it was about"),
 ]
 
 

@@ -154,6 +154,26 @@ begin
     return next;
   end;
 
+  -- A placeholder is not a result ---------------------------------------------
+  declare stub uuid;
+  begin
+    insert into analysis_run (engagement_id, job_type, status, finished_at,
+                              model_name, compute_output)
+         values (eng, 'analysis:note_sufficiency', 'succeeded', now(), 'stub',
+                 '{"rate":0.72}'::jsonb)
+      returning id into stub;
+    ok := false;
+    begin
+      perform gea_accept_run(stub, 'Fixture: looks fine.');
+    exception when others then ok := true;
+    end;
+    rule := 'D8';
+    description := 'a run from an analysis that is still a stub cannot be accepted';
+    result := case when ok then 'pass'
+                   else 'FAIL — an invented figure became evidence' end;
+    return next;
+  end;
+
   -- Mapping a field back lifts the cap its absence caused ---------------------
   perform gea_confirm_mapping(eng, capf, 'unmapped');
   perform gea_confirm_mapping(eng, capf, 'confirmed', 'Found It After All');
