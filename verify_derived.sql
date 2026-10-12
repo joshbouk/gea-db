@@ -174,6 +174,31 @@ begin
     return next;
   end;
 
+  -- A classification nobody read is not evidence ------------------------------
+  declare cls uuid;
+  begin
+    insert into analysis_run (engagement_id, job_type, status, finished_at,
+                              model_name, compute_output)
+         values (eng, 'analysis:discovery_consistency_classification',
+                 'succeeded', now(), 'claude-sonnet-4-6',
+                 jsonb_build_object(
+                   'census_complete', true,
+                   'to_check_by_hand', jsonb_build_array(
+                     jsonb_build_object('record_id', 'N1', 'labels',
+                                        jsonb_build_object('next_step', 'yes')))))
+      returning id into cls;
+    ok := false;
+    begin
+      perform gea_accept_run(cls, 'Fixture: looks right.');
+    exception when others then ok := true;
+    end;
+    rule := 'D9';
+    description := 'a classification nobody read cannot become evidence';
+    result := case when ok then 'pass'
+                   else 'FAIL — an unchecked classification was accepted' end;
+    return next;
+  end;
+
   -- Mapping a field back lifts the cap its absence caused ---------------------
   perform gea_confirm_mapping(eng, capf, 'unmapped');
   perform gea_confirm_mapping(eng, capf, 'confirmed', 'Found It After All');
