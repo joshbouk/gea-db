@@ -10,46 +10,16 @@
 --
 -- Run:  select * from gea_verify_014();
 
-create or replace function gea_clone_instrument(p_src uuid, p_label text)
-returns uuid language plpgsql as $fn$
-declare v_new uuid;
-begin
-  insert into instrument_version (label, status, notes)
-    values (p_label, 'draft', 'throwaway clone for activation testing')
-    returning id into v_new;
+-- gea_clone_instrument used to be defined here, and that was the bug.
+-- apply.py installs the verification suites after the migrations, so this
+-- definition overwrote the real one at the end of every run. The next
+-- migration to clone an instrument then used a throwaway built for
+-- activation testing, which copies elements and leaves the canonical
+-- fields, evidence requirements, interview guides and measurement
+-- definitions behind — and says nothing while doing it.
+--
+-- It lives in migration 057 now. This suite uses it like any other caller.
 
-  insert into element (instrument_version_id, ref, kind, stage_code, from_stage,
-    to_stage, name, why_assessed, evidence_required, method, owner_role,
-    support_role, fallback_rule, ne_permitted, tier_dependent, evidence_decays,
-    has_retrievability_test, sort_order, scored_without_export)
-  select v_new, ref, kind, stage_code, from_stage, to_stage, name, why_assessed,
-    evidence_required, method, owner_role, support_role, fallback_rule,
-    ne_permitted, tier_dependent, evidence_decays, has_retrievability_test,
-    sort_order, scored_without_export
-    from element where instrument_version_id = p_src;
-
-  insert into anchor (element_id, level, descriptor)
-  select e2.id, a.level, a.descriptor
-    from anchor a
-    join element e1 on e1.id = a.element_id
-    join element e2 on e2.ref = e1.ref and e2.instrument_version_id = v_new
-   where e1.instrument_version_id = p_src;
-
-  insert into export_line (instrument_version_id, tier, ref, title)
-  select v_new, tier, ref, title
-    from export_line where instrument_version_id = p_src;
-
-  insert into export_line_element (export_line_id, element_id)
-  select l2.id, e2.id
-    from export_line_element x
-    join export_line l1 on l1.id = x.export_line_id
-    join element     e1 on e1.id = x.element_id
-    join export_line l2 on l2.ref = l1.ref and l2.instrument_version_id = v_new
-    join element     e2 on e2.ref = e1.ref and e2.instrument_version_id = v_new
-   where l1.instrument_version_id = p_src;
-
-  return v_new;
-end $fn$;
 
 
 create or replace function gea_verify_014(p_label text default 'v0.6')

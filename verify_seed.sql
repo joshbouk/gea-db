@@ -89,15 +89,36 @@ begin
                  else 'FAIL — ' || coalesce(txt, 'none') end; return next;
 
   -- fields and caps -------------------------------------------------------
-  select count(*) into n from canonical_field where instrument_version_id = iv;
-  rule := 'S11'; description := '123 canonical fields';
-  result := case when n = 123 then 'pass' else 'FAIL — ' || n end; return next;
+  -- Replaced a count. "123 canonical fields" broke the first time the
+  -- methodology changed and told nobody anything when it passed.
+  --
+  -- "Every field is used by an analysis" was the obvious replacement and is
+  -- false: the vocabulary is deliberately wider than the thirteen analyses
+  -- consume, because scoring and the waterfall read fields too.
+  --
+  -- What does hold, and catches a real mistake: a field naming an export
+  -- line that does not exist. Writing T1-10 in one place and T1-11 in
+  -- another would silently make a field unmappable.
+  select count(*) into n
+    from canonical_field cf
+    cross join lateral unnest(cf.source_export_refs) as w(ref)
+   where cf.instrument_version_id = iv
+     and not exists (select 1 from export_line el
+                      where el.instrument_version_id = iv and el.ref = w.ref);
+  rule := 'S11';
+  description := 'every field names an export line that exists';
+  result := case when n = 0 then 'pass'
+                 else 'FAIL — ' || n || ' reference(s) to a line that is not there' end;
+  return next;
 
-  select count(*) into n from canonical_field_cap c
-    join canonical_field f on f.id = c.canonical_field_id
-   where f.instrument_version_id = iv;
-  rule := 'S12'; description := '12 cap rules';
-  result := case when n = 12 then 'pass' else 'FAIL — ' || n end; return next;
+    select count(*) into n from canonical_field_cap c
+    join canonical_field cf on cf.id = c.canonical_field_id
+   where cf.instrument_version_id = iv and not cf.is_cap_bearing;
+  rule := 'S12';
+  description := 'every cap rule sits on a field marked cap-bearing';
+  result := case when n = 0 then 'pass'
+                 else 'FAIL — ' || n || ' cap(s) on a field not marked' end;
+  return next;
 
   select count(*) into n from canonical_field f
    where f.instrument_version_id = iv and f.is_cap_bearing
@@ -133,12 +154,17 @@ begin
   -- exports, and must require an identifier from each one, or it cannot put
   -- them together. v0.6 reported thirteen analyses supported that could not
   -- have run.
+  -- Only the exports an analysis genuinely depends on. A field that can
+  -- come from either of two exports — a meeting timestamp sits in the
+  -- activities export or the notes export — does not mean the analysis
+  -- reads both. It reads whichever the client supplied.
   select count(*) into n from (
     select r.analysis_key, want.ref
       from analysis_field_requirement r
       join canonical_field cf on cf.id = r.canonical_field_id
       cross join lateral unnest(cf.source_export_refs) as want(ref)
      where r.instrument_version_id = iv
+       and array_length(cf.source_export_refs, 1) = 1
      group by r.analysis_key, want.ref
     except
     select r.analysis_key, want.ref
@@ -164,9 +190,19 @@ begin
   return next;
 
   -- exports and coverage --------------------------------------------------
-  select count(*) into n from export_line where instrument_version_id = iv;
-  rule := 'S17'; description := '24 export lines';
-  result := case when n = 24 then 'pass' else 'FAIL — ' || n end; return next;
+    -- Replaced "24 export lines". An element that no export serves and that
+  -- is not marked scorable without one cannot be evidenced at all, and
+  -- nothing else would notice.
+  select count(*) into n from element e
+   where e.instrument_version_id = iv
+     and not coalesce(e.scored_without_export, false)
+     and not exists (select 1 from export_line_element x
+                      where x.element_id = e.id);
+  rule := 'S17';
+  description := 'every element has an export serving it, or says it needs none';
+  result := case when n = 0 then 'pass'
+                 else 'FAIL — ' || n || ' element(s) with no route to evidence' end;
+  return next;
 
   select count(*) into n from element e
    where e.instrument_version_id = iv
