@@ -22,7 +22,12 @@
 
 
 
-create or replace function gea_verify_014(p_label text default 'v0.6')
+-- Null means whichever version is active, not a fixed label. Check A7
+-- compares a draft against the active version, so a clone of a retired one
+-- is permanently "changed" the moment the methodology moves — and every
+-- check expecting a clean activation fails for a reason that has nothing to
+-- do with what it is testing.
+create or replace function gea_verify_014(p_label text default null)
 returns table (rule text, description text, result text)
 language plpgsql as $fn$
 declare
@@ -32,6 +37,8 @@ declare
   msg text;
   n   integer;
 begin
+  p_label := coalesce(p_label,
+    (select label from instrument_version where status = 'active' limit 1));
   select id into src from instrument_version where label = p_label;
   if src is null then
     rule := 'V00'; description := 'the seeded instrument exists';
