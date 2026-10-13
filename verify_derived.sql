@@ -199,6 +199,53 @@ begin
     return next;
   end;
 
+  -- Nothing survives the file it was about -----------------------------------
+  --
+  -- The standing version of a bug found five separate times: a mapping,
+  -- an absence, a cap, a run and a citation each outlived the file they
+  -- were about, and each was fixed on its own after somebody hit it. This
+  -- asks the whole question at once, so the sixth is caught here instead.
+  declare gone uuid; leftovers text[] := array[]::text[];
+  begin
+    select a.id into gone from artefact a
+     where a.engagement_id = eng and a.purged_at is null
+       and a.is_row_data limit 1;
+    if gone is not null then
+      perform gea_purge_artefact(gone, 'Fixture: checking nothing survives.');
+
+      if exists (select 1 from field_mapping m
+                   join dataset d on d.id = m.dataset_id
+                  where d.artefact_id = gone
+                    and m.status in ('confirmed','corrected','auto_accepted')) then
+        leftovers := leftovers || 'a confirmed mapping'::text;
+      end if;
+      if exists (select 1 from score_citation c where c.artefact_id = gone) then
+        leftovers := leftovers || 'a score citation'::text;
+      end if;
+      if exists (select 1 from analysis_run r
+                  where gone = any (r.input_artefact_ids) and not r.is_stale) then
+        leftovers := leftovers || 'a run that is not stale'::text;
+      end if;
+      if exists (select 1 from dataset_row r
+                   join dataset d on d.id = r.dataset_id
+                  where d.artefact_id = gone) then
+        leftovers := leftovers || 'its rows'::text;
+      end if;
+      if exists (select 1 from score s
+                   join score_citation c on c.score_id = s.id
+                  where s.engagement_id = eng and s.state = 'final'
+                    and c.artefact_id = gone) then
+        leftovers := leftovers || 'a final score citing it'::text;
+      end if;
+    end if;
+    rule := 'D10';
+    description := 'nothing survives the file it was about';
+    result := case when array_length(leftovers, 1) is null then 'pass'
+                   else 'FAIL — ' || array_to_string(leftovers, ', ')
+                        || ' outlived the removed file' end;
+    return next;
+  end;
+
   -- Mapping a field back lifts the cap its absence caused ---------------------
   perform gea_confirm_mapping(eng, capf, 'unmapped');
   perform gea_confirm_mapping(eng, capf, 'confirmed', 'Found It After All');
