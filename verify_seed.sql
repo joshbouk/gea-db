@@ -204,11 +204,20 @@ begin
                  else 'FAIL — ' || n || ' element(s) with no route to evidence' end;
   return next;
 
+  -- S17 asks whether every element has a route to evidence. This asks the
+  -- inverse: that every element claiming to need no export genuinely has
+  -- none. A flag set on an element an export already serves is a lie, and
+  -- the exemption quietly stops meaning anything.
+  --
+  -- This check used to carry a hardcoded list of five element refs, which
+  -- was right when it was written and wrong the moment an element was
+  -- exempted. The third such list found in these suites.
   select count(*) into n from element e
    where e.instrument_version_id = iv
-     and e.ref not in ('2.1','2.4','3.3','H01','H02')
-     and not exists (select 1 from export_line_element x where x.element_id = e.id);
-  rule := 'S18'; description := 'every element has an export line or is a declared exception';
+     and coalesce(e.scored_without_export, false)
+     and exists (select 1 from export_line_element x where x.element_id = e.id);
+  rule := 'S18';
+  description := 'an element that says it needs no export really has none';
   result := case when n = 0 then 'pass' else 'FAIL — ' || n || ' uncovered' end;
   return next;
 
