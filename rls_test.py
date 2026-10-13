@@ -151,6 +151,16 @@ def main():
           OUTSIDE, 48)
     reads("outsider DENIED artefacts",        "select id from artefact",     OUTSIDE, 0)
     reads("outsider DENIED datasets",         "select id from dataset",      OUTSIDE, 0)
+    # A view is only as private as what it reads. field_mapping_board joins
+    # the column profile, which carries sample values out of the client's
+    # own file, and a view that leaked those would be worse than the table
+    # it was built to save the application from querying.
+    reads("no-raw member sees no column values",
+          "select populated_count from field_mapping_board "
+          "where populated_count is not null", OBS, 0)
+    reads("outsider sees no column values",
+          "select populated_count from field_mapping_board "
+          "where populated_count is not null", OUTSIDE, 0)
     writes("outsider cannot write a task",
            "insert into task (engagement_id, step_ref, title, task_type) values "
            "('%s','1.3','should not land','setup')" % ENGAGEMENT, OUTSIDE, False)
