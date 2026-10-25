@@ -38,7 +38,7 @@ SUITES = [
     ("gea_verify_007", 6, "reference immutability and the cap model"),
     ("gea_verify_seed", 31, "the loaded data matches the instrument"),
     ("gea_verify_014", 12, "each activation check refuses its violation"),
-    ("gea_verify_derived", 11, "no judgement outlives the evidence it was about"),
+    ("gea_verify_derived", 12, "no judgement outlives the evidence it was about"),
 ]
 
 
@@ -67,6 +67,23 @@ def apply_migrations(conn, dry_run: bool) -> int:
         try:
             with conn.transaction():
                 conn.execute(path.read_text(encoding="utf-8"))
+                # Recorded here, not left to the migration.
+                #
+                # Every migration is supposed to write its own row, and
+                # one shipped without it. It ran, changed the database,
+                # left no record, and the next run tried it again — where
+                # it failed on a column it had itself created. A rule
+                # every file must remember is a rule that will be
+                # forgotten; doing it here means it cannot be.
+                # Guarded, because the table that holds these records
+                # is itself created by one of the early migrations.
+                cur = conn.execute(
+                    "select to_regclass('public.gea_migration')")
+                if cur.fetchone()[0] is not None:
+                    conn.execute(
+                        "insert into gea_migration (filename, note) "
+                        "values (%s, %s) on conflict do nothing",
+                        (path.name, "Recorded by apply.py."))
             print(f"    applied      {path.name}")
         except Exception as exc:                               # noqa: BLE001
             print(f"\n  FAILED on {path.name}\n", file=sys.stderr)

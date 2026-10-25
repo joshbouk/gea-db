@@ -199,6 +199,77 @@ begin
     return next;
   end;
 
+  -- Every enqueue says what it is about --------------------------------------
+  --
+  -- A job's key decides whether two requests are the same work. Get it
+  -- wrong in one direction — a timestamp in the key — and nothing ever
+  -- matches, so three files produce three identical runs. Get it wrong
+  -- in the other — no key at all — and everything matches the first run
+  -- ever made, so the job runs once and never again. Both were shipped,
+  -- twice each, and neither failed loudly.
+  --
+  -- A function may queue work without a key only if it first refuses
+  -- when one is already in flight. Anything else is a job that will
+  -- either duplicate itself or never run twice.
+  declare unkeyed text[];
+  begin
+    select coalesce(array_agg(p.proname order by p.proname), array[]::text[])
+      into unkeyed
+      from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public'
+       and p.proname <> 'gea_enqueue_run'
+       and p.prosrc like '%gea_enqueue_run%'
+       -- No key passed: no parameters, no hashes, no artefacts.
+       and pg_get_functiondef(p.oid) ~
+           'gea_enqueue_run\s*\([^;]*?\)\s*(e\s*)?;'
+       and pg_get_functiondef(p.oid) !~ 'jsonb_build_object|p_parameters|v_params|input_hashes|p_hashes|r\.parameters'
+       -- And no guard against one already running.
+       and pg_get_functiondef(p.oid) !~ 'status in \(''queued'', ?''running''\)';
+    rule := 'D12';
+    description := 'every enqueue says what it is about';
+    result := case when array_length(unkeyed, 1) is null then 'pass'
+                   else 'FAIL — ' || array_to_string(unkeyed, ', ')
+                        || ' queue work with no key and no guard, so each '
+                        || 'will run once and never again' end;
+    return next;
+  end;
+
+  -- A clone carries everything an instrument owns ---------------------------
+  --
+  -- gea_clone_instrument copies the tables somebody remembered. Two were
+  -- added to the methodology after it was written and never added to it,
+  -- so one version silently lost thirteen pieces of reviewer guidance and
+  -- the next lost the shape of the report. Nothing failed and nothing
+  -- said anything.
+  --
+  -- A table carrying instrument_version_id belongs to an instrument and
+  -- has to be cloned with it. The two exceptions name themselves: an
+  -- engagement points at the version it is pinned to, and a library
+  -- record is written once and outlives every version.
+  declare forgotten text[];
+  begin
+    select coalesce(array_agg(c.table_name order by c.table_name),
+                    array[]::text[])
+      into forgotten
+      from information_schema.columns c
+      join pg_proc p on p.proname = 'gea_clone_instrument'
+     where c.column_name = 'instrument_version_id'
+       and c.table_schema = 'public'
+       and c.table_name not in ('engagement', 'library_record')
+       and position(c.table_name in
+             pg_get_functiondef(p.oid)
+             || coalesce((select pg_get_functiondef(b.oid) from pg_proc b
+                           where b.proname = 'gea_clone_instrument_body'), '')
+           ) = 0;
+    rule := 'D11';
+    description := 'a clone carries everything an instrument owns';
+    result := case when array_length(forgotten, 1) is null then 'pass'
+                   else 'FAIL — ' || array_to_string(forgotten, ', ')
+                        || ' would be lost at the next version' end;
+    return next;
+  end;
+
   -- Nothing survives the file it was about -----------------------------------
   --
   -- The standing version of a bug found five separate times: a mapping,
