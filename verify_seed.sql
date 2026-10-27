@@ -256,11 +256,30 @@ begin
   rule := 'S23'; description := '7 interview guides';
   result := case when n = 7 then 'pass' else 'FAIL — ' || n end; return next;
 
-  select count(*) into n from interview_question q
-    join interview_guide g on g.id = q.interview_guide_id
-   where g.instrument_version_id = iv;
-  rule := 'S24'; description := '116 interview questions';
-  result := case when n = 116 then 'pass' else 'FAIL — ' || n end; return next;
+  -- Every subject has a way into it.
+  --
+  -- This counted interview questions and asserted there were a hundred
+  -- and sixteen, which held until the guides changed shape and then
+  -- failed for the right reason at the wrong time. A guide is now
+  -- subjects to establish, and what matters is that each one has at
+  -- least one way in for a consultant who needs one. The number of
+  -- questions is not a fact about the instrument worth defending.
+  select count(*) into n from interview_topic t
+    join interview_guide g on g.id = t.interview_guide_id
+   where g.instrument_version_id = iv
+     and not exists (select 1 from interview_question q
+                      where q.interview_topic_id = t.id and q.is_a_way_in);
+  rule := 'S24'; description := 'every subject has a way into it';
+  result := case when n = 0 then 'pass'
+                 else 'FAIL — ' || n || ' with none' end; return next;
+
+  select count(*) into n from interview_guide g
+   where g.instrument_version_id = iv
+     and not exists (select 1 from interview_topic t
+                      where t.interview_guide_id = g.id);
+  rule := 'S24b'; description := 'every guide has subjects';
+  result := case when n = 0 then 'pass'
+                 else 'FAIL — ' || n || ' guides with none' end; return next;
 
   select count(*) into n from element e
    where e.ref in ('H01','H02','H06')
